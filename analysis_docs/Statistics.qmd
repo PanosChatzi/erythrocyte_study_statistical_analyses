@@ -1,0 +1,384 @@
+---
+title: "Erythrocyte paper statistics"
+subtitle: "Workflow of the statistical analyses"
+author: "Panagiotis N. Chatzinikolaou"
+format: html
+editor: visual
+execute: 
+  warning: false
+  message: false
+editor_options: 
+  chunk_output_type: console
+---
+
+## Introduction
+
+The statistical analyses are described in detail in the Methods section of the paper. This interactive document contains only the R code used for the statistical analyses. In all statistical tests, the statistical significance was set at alpha = 0.05.
+
+## Setup
+
+### Custom functions
+
+```{r}
+#| include: false
+#| echo: false
+source("r_docs/MyStatsFunctions.R")
+```
+
+### Packages
+
+```{r}
+#| echo: false
+# Load required libraries
+library(purrr)    # Functional programming
+library(tidyr)    # Data reshape
+library(dplyr)    # Data manipulation
+
+library(ez)       # Anova
+library(afex)     # Anova
+library(multcomp) # Multiple pairwise comparisons
+library(emmeans)  # Estimated marginal means and post-hocs
+```
+
+### Load data
+
+Load the '.RData' file that was created in the Data Preparation document.
+
+```{r}
+#| echo: false
+# Load the saved Rdata files
+load("data/tidyData.RData")
+```
+
+## ANOVA
+
+For all glycolytic and redox molecules (enzymes, metabolites and biomarkers) we used two-way repeated measures ANOVA \[Condition (control, oxidative stress) × Time (baseline, pre- and post-exercise)\]. In the glycolytic flux, the Time factor included the next levels: baseline, pre-exercise, and at 0-, 10-, and 30-min post-exercise. When a significant interaction was found, we performed post-hoc pairwise comparisons and adjusted the p-values using the Bonferroni/Sidak test.
+
+The workflow we followed was the following:
+
+1.  Exploratory analysis to check assumptions (Jamovi/Jasp).
+
+2.  Fit anova models using the **afex** and **ezANOVA** packages.
+
+    -   Check assumptions of sphericity using **ezANOVA**.
+    -   Get the F statistic, p values and partial eta squared for condition, time and interaction.
+    -   Compare with SPSS/JASP/Jamovi.
+
+3.  Post-hoc pairwise comparisons, if the interaction was significant.
+
+    -   Peform post-hoc pairwise tests using **emmeans** and **multcomp** packages.
+    -   Adjust p values using the Sidak correction.
+    -   Calculate Hedge's g effect sizes for each test with the **emmeans** package.
+
+4.  The results from ANOVA were compared and validated with SPSS, Jamovi and Jasp.
+
+## 1. Model
+
+We perform anova using the **afex** package, with the glycolysis flux as the dependent variable from the *lactate_dat_tidy* data.
+
+```{r}
+#| echo: false
+colnames(metabolic_tidy)
+```
+
+```{r}
+#| echo: false
+aov_model_afex <- aov_ez(id = "ID",
+                         dv = "nadph",
+                         data = metabolic_tidy, 
+                         within = c('condition', 'timepoint'),
+                         anova_table = list(es = "pes"))  
+#aov_model_afex
+
+# We also fit a linear model for later use (see effect sizes section)
+lm_model <- lm(nadph ~ condition * timepoint,
+               data = metabolic_tidy,
+               contrasts = list(condition = "contr.sum", 
+                                timepoint = "contr.sum"))
+```
+
+```{r}
+sigma(lm_model)
+sd(residuals(aov_model_afex))
+```
+
+For all the other datasets, we perform anova tests to all variables of the column *Measurement*, we group by the *Molecule*/*Test* variable, and use the packages **afex** (analysis of factorial experiments) and **purrr** (functional programming) packages.
+
+```{r}
+#| echo: false
+# Fit multiple anova models
+aov_model_afex <- performance_tidier %>%
+  group_by(Test) %>%
+  nest() %>%
+  mutate(aov = map(data, ~ aov_ez(id = "ID", 
+                                  dv = 'Measurement', 
+                                  data = .x, 
+                                  within = c("condition", "timepoint"),
+                                  anova_table = list(es = "pes"))))
+
+# Get the names of all variables
+measurement_names <- colnames(performance_tidy)[4:ncol(performance_tidy)]
+
+# Change the names of the lists in the aov column
+names(aov_model_afex$aov)
+names(aov_model_afex$aov) <- measurement_names
+#names(aov_model_afex$aov)
+
+# Print results
+aov_model_afex$aov
+#nice(metabolic_aov$aov$BPG)
+
+# Finally, we fit a linear model for later use (see post-hoc effect sizes section)
+lm_model <- lm(hexokinase ~ condition * timepoint,
+               data = metabolic_tidy,
+               contrasts = list(condition = contr.sum, timepoint = contr.sum))
+```
+
+Using the 'metabolic_tidier' dataset, the result is a 17 by 3 tibble, where the column *Molecule* includes the names of the variables, the column *data* includes the dataset of each variable in a tibble structure, and the column *aov* contains the results of each anova in a list structure. The lists in the *aov* column are all unnamed. Thus, we pass more meaningful names to improve understanding of the results and prevent any mistakes.
+
+We also fit anova models using the `ezANOVA()` function from the **ez** package to compare results. This packages also performs the Mauchly's test for sphericity, and automatically applies the Greenhouse-Geisser and Huynh-Feldt sphericity corrections if needed.
+
+```{r}
+#| echo: false
+# Use the ezANOVA function from the ez package
+metabolic_ez <- metabolic_tidier %>%
+  group_by(Molecule) %>%
+  nest() %>%
+  mutate(aov = map(data, ~ ezANOVA(data = .x, 
+                                   dv = Measurement, 
+                                   wid = ID, 
+                                   within = c(condition, timepoint), 
+                                   detailed = TRUE, 
+                                   type = 3)))
+
+# Change the names of the lists
+names(metabolic_ez$aov) <- metabolite_names
+names(metabolic_ez$aov)
+
+# Now print the results and check the Mauchly's test for sphericity
+metabolic_ez$aov
+```
+
+## 2. Post-hocs
+
+In this section, we perform post-hoc tests on the anova models with significant interaction, using the Sidak adjustment for multiple comparisons via the **emmeans** and **multcomp** packages.
+
+Firstly, we use the anova models that we created with the `emmeans()` function to create an *emmGrid* object. Next, pass it to the `pairs()` function and use the 'adjust = "bonferroni"' argument to correct for the multiple comparisons. We can also pass the pairs object to the `test()`, `contrast()` or `confit()` functions. The argument '\~ condition \* timepoint' is used to denote the post-hoc tests for the interaction of condition by time.
+
+```{r}
+#| echo: false
+# Create an emmGrids object with the estimated marginal means
+emms_obj <- emmeans(aov_model_afex, #aov_model_afex$aov$isoTorLeg
+                    ~ condition * timepoint)
+
+# Use pairs for the pairwise comparisons
+pairs_obj <- pairs(emms_obj, adjust = "bonferroni")
+
+post_hocs_obj <- test(pairs_obj)
+```
+
+For more powerful multiple comparisons, it is suggested to use the function `as.glht()` from the dedicated **multcomp** package.
+
+```{r}
+#| echo: false
+summary(as.glht(pairs_obj), test = adjusted("bonferroni"))
+```
+
+## 3. Effect sizes
+
+In this section, we calculate the effect sizes of the post-hoc tests using the `eff_size()` function from **emmeans**. The **GAMLj3** package and GAMLj module in Jamovi provide the i) Cohen's dmod, which uses the `sigma(lm_model)` as the standard deviation and, as a result, provides similar results with **emmeans**; ii) Cohen's dsample, by approximating the effect size from the t statistic using the `t_to_d()` function from **effectsize**; iii) and gsample, the corrected value of dsample using the J correction factor. To get the Hedge's g corrected effect size, we multiply the Cohen's d by the J correction factor:
+
+$$
+g = d*J
+$$
+
+The correction factor can be calculated using the `lgamma()` function as described in Cousineau & Goulet-Pelletier (2021) and the Guide to Effect Sizes and Confidence Intervals (2023):
+
+$$
+J = exp ( lgamma(df / 2) - log(sqrt(df / 2)) - lgamma((df - 1) / 2) )
+$$
+
+An easier approximate of the previous calculation is the following (Borenstein; Lakens, 2013):
+
+$$
+J = 1 - (3 / (4 * (n-1) - 1))
+$$
+
+```{r}
+#| echo: false
+# Calculate Hedge's g correction factor J
+n <- 20       # Sample size
+df <- n - 1   # Degrees of freedom for paired samples
+# Using Cousineau & Goulet-Pelletier equation
+J <- exp ( lgamma(df / 2) - log(sqrt(df / 2)) - lgamma((df - 1) / 2) )
+```
+
+To calculate the effect sizes, we use the `eff_size()` function. For this function we need the model's standard deviation (which is identical to the pooled SD) using the `sigma()` function, and degrees of freedom with the `df.residual()` function. Moreover, in order to modify the output object, we have to transform the *emmGrid* to a *data.frame* using the `as.data.frame()` function.
+
+```{r}
+#| echo: false
+effsize_obj <- eff_size(emms_obj,
+                        sigma = (sigma(lm_model)),
+                        edf = df.residual(lm_model))
+
+effsize_df <- as.data.frame(effsize_obj,
+                            row.names = NULL,
+                            check.names = TRUE,
+                            destroy.annotations = TRUE)
+
+post_hocs_df <- as.data.frame(post_hocs_obj,
+                              row.names = NULL,
+                              check.names = TRUE,
+                              destroy.annotations = TRUE)
+
+effsize_df$p.values <- post_hocs_df$p.value
+```
+
+Now we calculate the hedge's g by multiplying the factor J to every row of the *effect.size* column. Moreover, to get a clearer table containing only the significant post-hoc tests, we filter out the p \< 0.05 values, add asterics and keep the columns of interest.
+
+```{r}
+#| echo: false
+# Create a new column with the hedge's g values
+effsize_df$hedgesG <- effsize_df$effect.size * J
+
+# Subset based on p-values and remove NA values
+effsize_df_2 <- na.omit(effsize_df[effsize_df$p.values < 0.05, ])
+
+# Add a new column with asterisks based on significance
+effsize_df_2$asteriscs <- 
+  ifelse(effsize_df_2$p.values < 0.001, "***", 
+         ifelse(effsize_df_2$p.values < 0.01, "**", 
+                ifelse(effsize_df_2$p.values < 0.05, "*", "")))
+
+# Keep only the columns of interest for conciseness
+effsize_df_3 <- subset(effsize_df_2, 
+                       select = c(contrast, hedgesG, p.values, asteriscs))
+
+# Finally, sort by alphabetical order for ease of read
+effsize_df_3 <- effsize_df_3[order(effsize_df_3$contrast), ]
+effsize_df_3
+```
+
+### Clean
+
+Remove all the objects that we created to repeat the Post-hoc steps for the other dependent variables.
+
+```{r}
+#| echo: false
+#| include: false
+rm(lm_model, effsize_obj, emms_obj, pairs_obj, post_hocs_obj, effsize_df, effsize_df_2, effsize_df_3, post_hocs_df)
+
+rm(aov_model_afex)
+```
+
+After finishing with a whole dataset, we clean all the model variables and move to another dataset.
+
+```{r}
+#| echo: false
+#| include: false
+rm(metabolic_tidier, measurement_names)
+```
+
+## T-Tests
+
+Paired sample t-tests were performed to compare the effect of oxidative stress on the arm and leg cardiopulmonary outcomes, using base R. When the assumption of normality was violated, Wilcoxon signed-rank tests were performed. The Hedge’s g corrected effect size (g) was calculated for the paired t-tests. The effect sizes were calculated as described in Guide to Effect Sizes and Confidence Intervals (2023) using the **MOTE** package.
+
+### Parametric
+
+Tidy the dataset.
+
+```{r}
+#| echo: false
+vo2_tidier <- vo2_dat_tidy |> 
+  pivot_longer(cols = !c(ID, condition),    
+               cols_vary = "fastest",
+               values_to = "Measurement",
+               names_to = "Test")
+
+vo2names <- colnames(vo2_dat_tidy)[3:ncol(vo2_dat_tidy)]
+```
+
+Perform paired sample T-Tests in all cardiopulmonary variables.
+
+```{r}
+#| echo: false
+paired_tests_res <- vo2_tidier |>
+  group_by(Test)  |>
+  nest() |> 
+  mutate(t.test = map(data, ~ t.test(Measurement ~ condition,
+                                     mu = 0,
+                                     paired = TRUE,
+                                     var.equal = TRUE,
+                                     conf.level = 0.95,
+                                     data = .x)))
+
+# Change the names of the lists in the t.tests column
+names(paired_tests_res$t.test) <- vo2names
+paired_tests_res$t.test
+```
+
+Calculate the cohen's d effect sizes for repeated measures using the **TOSTER** package.
+
+```{r}
+#| echo: false
+effect_sizes_res <- vo2_tidier |> 
+  group_by(Test)  |>
+  nest() |> 
+  mutate(Effect.Sizes = map(data, ~ TOSTER::smd_calc(Measurement ~ condition,
+                                               data = .x,
+                                               paired = TRUE,
+                                               var.equal = TRUE,
+                                               rm_correction = TRUE,
+                                               bias_correction = TRUE)))
+
+# Assign the correct names
+names(effect_sizes_res$Effect.Sizes) <- vo2names
+effect_sizes_res$Effect.Sizes
+```
+
+### Non-parametric
+
+```{r}
+#| echo: false
+vo2_test <- 
+  with(vo2_dat_tidy,
+     wilcox.test(vo2Leg ~ condition,
+            alternative = "two.sided",
+            mu = 0, 
+            paired = TRUE,   
+            conf.level = 0.95))
+
+with(vo2_dat_tidy,
+     wilcox.test(rerLeg ~ condition,
+            alternative = "two.sided",
+            mu = 0, 
+            paired = TRUE,   
+            conf.level = 0.95))
+```
+
+Calculate the rank-biserial correlation (rb) effect size.
+
+```{r}
+#| echo: false
+rstatix::wilcox_effsize(vo2Leg ~ condition,
+                        data = vo2_dat_tidy,
+                        paired = TRUE,
+                        ci = TRUE)
+
+rstatix::wilcox_effsize(rerLeg ~ condition,
+                        data = vo2_dat_tidy,
+                        paired = TRUE,
+                        ci = TRUE)
+```
+
+## References
+
+Matthiew B. Jane et al. 2023. Guide to Effect Sizes and Confidence Intervals. <https://matthewbjane.quarto.pub/effect-size-and-confidence-intervals-guide/>
+
+Borenstein et al, 2009. Introduction to Meta‐Analysis.
+
+Denis Cousineau and Jean-Christophe Goulet-Pelletier. 2021. A study of confidence intervals for Cohen’s dp in within-subject designs with new proposals.
+
+Denis Cousineau and Jean-Christophe Goulet-Pelletier. 2018. A review of effect sizes and their confidence intervals, Part I: The Cohen’s d family.
+
+Lakens. 2013. Calculating and reporting effect sizes to facilitate cumulative science: a practical primer for t-tests and ANOVAs.
