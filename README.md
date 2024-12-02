@@ -1,6 +1,6 @@
-# The role of erythrocyte metabolism in muscle oxygenation and exercise performance
+# Erythrocyte glycolytic and redox metabolism affects muscle oxygenation and exercise performance: a randomized double-blind crossover study in humans
 
-This repository corresponds to our paper titled "**Investigating the role of erythrocyte glycolytic and redox metabolism in muscle oxygenation and exercise performance**", which is under preparation. Here, we investigated the role of erythrocyte metabolism in performance using a combination of *in vivo*, *in vitro* and quantitative approaches.
+This repository corresponds to our paper titled "**Erythrocyte glycolytic and redox metabolism affects muscle oxygenation and exercise performance: a randomized double-blind crossover study in humans**", which is under preparation. Here, we investigated the role of erythrocyte glycolytic and redox metabolism in exercise fatigue using a combination of *in vivo*, *in vitro* and quantitative approaches.
 
 First author details:
 
