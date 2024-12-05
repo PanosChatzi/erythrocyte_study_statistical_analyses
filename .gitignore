@@ -67,11 +67,8 @@ rsconnect/
 #*README_files/
 
 ## Prevent testing docs, data (will be uploaded after publication)
-# Prevent the test-docs folder
-test-docs/
-
-# Prevent the data folder (for now)
-data/
+# Prevent excel files
+.xlsx
 
 # Prevent figures
 figures/
