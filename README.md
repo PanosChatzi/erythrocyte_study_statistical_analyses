@@ -13,9 +13,9 @@ This repository corresponds to our paper, titled "**Erythrocyte glycolytic and r
 ### Repository structure
 - **analysis_docs/**
   - Contains Quarto Markdown (`.qmd`) files documenting:
-    - `01_Data_Preparation.qmd`: Data cleaning and processing.
-    - `02_Figures.qmd`: Code for the figures and panels.
-    - `03_Statistics.qmd`: Statistical analysis.
+    - `01_Data_Preparation.qmd`: Data cleaning, processing and reshaping from wide to long format for analysis.
+    - `02_Figures.qmd`: Code for visualizing the data in figures and panels.
+    - `03_Statistics.qmd`: Statistical analyses (repeated measures anova, post-hocs, parametric and non-parametric t-tests, and effect sizes).
 
 - **data/**
   - Includes raw and processed data files:
