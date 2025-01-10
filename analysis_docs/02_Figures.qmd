@@ -153,7 +153,7 @@ Now save the plot.
 
 ```{r}
 #| echo: false
-ggsave(plot = glycoplot, filename = "Glycolysis.svg", path = "D:/PhD/Papers/Erythrocyte study/Figures/Glycolysis/", device = "svg", width = 22.31, height = 13.42, units = "cm", dpi = 320)
+ggsave(plot = glycoplot, filename = "Glycolytic_flux.svg", path = "D:/PhD/Papers/Erythrocyte study/Figures/Glycolysis/", device = "svg", width = 22.31, height = 13.42, units = "cm", dpi = 320)
 ```
 
 **2,3-bisphosphoglycerate (mM)**

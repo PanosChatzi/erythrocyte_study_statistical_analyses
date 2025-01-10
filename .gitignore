@@ -68,10 +68,14 @@ rsconnect/
 
 ## Prevent testing docs, data (will be uploaded after publication)
 # Prevent excel files
-.xlsx
+*.xlsx
 
 # Prevent figures
 figures/
 
 # Prevent the SummaryStats.R file
 SummaryStats.R
+
+# test docs
+test-docs/
+

@@ -138,8 +138,8 @@ se_sdm <- function(sdm, n, r){
 }
 
 # References
-# Matthiew B. Jane et al. 2023. Guide to Effect Sizes and Confidence Intervals. 
-# https://matthewbjane.quarto.pub/effect-size-and-confidence-intervals-guide/
+# Matthiew B. Jane et al. 2024. Guide to Effect Sizes and Confidence Intervals. 
+# https://matthewbjane.quarto.pub/guide-to-effect-sizes-and-confidence-intervals
 
 # Lakens. 2013. Calculating and reporting effect sizes to facilitate cumulative science:
 # a practical primer for t-tests and ANOVAs.
